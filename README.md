@@ -5,3 +5,5 @@ Firmware files for the cheapino built against the latest vial-qmk version (as of
 cheapino_dvorakbrm-vial.uf2 is the firmware file itself to be flashed to the cheapinov2 controller. This is built defaulting to a dvorak keymap, with custom layers and bottom-row-mods customized to my particular workflow.
 
 dvorak-qwerty-brm-bleys43.vil is the vial config save with many refinements, such as one-shot shift key, macros and combos. Without this, several layers are inaccessible.
+
+cheapino directory is the source code for compilation of this firmware. To successfully compile, you must place it in the vial-qmk/keyboards directory of your vial-qmk source tree once you have cloned it from the vial project's git repository.
