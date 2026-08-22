@@ -1,0 +1,56 @@
+name: Build Cheapino V2 Vial + KeyPeek
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/qmk/qmk_cli
+
+    steps:
+      - name: Checkout Cheapino source
+        uses: actions/checkout@v4
+
+      - name: Clone Vial-QMK
+        run: |
+          git clone --depth 1 --branch vial \
+            https://github.com/vial-kb/vial-qmk.git \
+            qmk_firmware
+
+      - name: Install Cheapino V2 source
+        run: |
+          rm -rf qmk_firmware/keyboards/cheapino
+          cp -r cheapino qmk_firmware/keyboards/cheapino
+
+      - name: Install KeyPeek module
+        run: |
+          mkdir -p qmk_firmware/modules
+          git clone --depth 1 \
+            https://github.com/srwi/qmk-modules.git \
+            qmk_firmware/modules/srwi
+
+      - name: Enable KeyPeek
+        run: |
+          cat > qmk_firmware/keyboards/cheapino/keymaps/vial/keymap.json <<'EOF'
+          {
+            "modules": [
+              "srwi/keypeek_layer_notify"
+            ]
+          }
+          EOF
+
+          echo "RAW_ENABLE = yes" >> \
+            qmk_firmware/keyboards/cheapino/keymaps/vial/rules.mk
+
+      - name: Build firmware
+        working-directory: qmk_firmware
+        run: |
+          qmk setup -y
+          qmk compile -kb cheapino -km vial
+
+      - name: Upload UF2
+        uses: actions/upload-artifact@v4
+        with:
+          name: cheapino-v2-vial-keypeek
+          path: qmk_firmware/*.uf2
