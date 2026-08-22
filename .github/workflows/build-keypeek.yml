@@ -6,17 +6,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/qmk/qmk_cli
+    container: ghcr.io/qmk/qmk_cli:latest
 
     steps:
       - name: Checkout Cheapino source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Clone Vial-QMK
         run: |
           git clone --depth 1 --branch vial \
             https://github.com/vial-kb/vial-qmk.git \
             qmk_firmware
+
+      - name: Initialize QMK submodules
+        working-directory: qmk_firmware
+        run: |
+          make git-submodule
 
       - name: Install Cheapino V2 source
         run: |
@@ -46,11 +51,16 @@ jobs:
       - name: Build firmware
         working-directory: qmk_firmware
         run: |
-          qmk setup -y
-          qmk compile -kb cheapino -km vial
+          make cheapino:vial
+
+      - name: Show generated firmware
+        working-directory: qmk_firmware
+        run: |
+          find . -maxdepth 1 -type f \( -name "*.uf2" -o -name "*.bin" -o -name "*.hex" \) -print
 
       - name: Upload UF2
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cheapino-v2-vial-keypeek
           path: qmk_firmware/*.uf2
+          if-no-files-found: error
