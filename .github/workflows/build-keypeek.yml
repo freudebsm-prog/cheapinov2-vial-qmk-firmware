@@ -9,33 +9,69 @@ jobs:
     container: ghcr.io/qmk/qmk_cli:latest
 
     steps:
+      # ------------------------------------------------------------
+      # 1. 현재 GitHub 저장소 checkout
+      # ------------------------------------------------------------
       - name: Checkout Cheapino source
         uses: actions/checkout@v5
 
+      # ------------------------------------------------------------
+      # 2. Vial-QMK 다운로드
+      # ------------------------------------------------------------
       - name: Clone Vial-QMK
         run: |
-          git clone --depth 1 --branch vial \
+          git clone \
+            --depth 1 \
+            --branch vial \
+            --recurse-submodules \
+            --shallow-submodules \
             https://github.com/vial-kb/vial-qmk.git \
             qmk_firmware
 
-      - name: Initialize QMK submodules
-        working-directory: qmk_firmware
-        run: |
-          make git-submodule
-
+      # ------------------------------------------------------------
+      # 3. Cheapino V2 소스를 Vial-QMK에 복사
+      # ------------------------------------------------------------
       - name: Install Cheapino V2 source
         run: |
           rm -rf qmk_firmware/keyboards/cheapino
           cp -r cheapino qmk_firmware/keyboards/cheapino
 
+      # ------------------------------------------------------------
+      # 4. KeyPeek QMK module 설치
+      # ------------------------------------------------------------
       - name: Install KeyPeek module
         run: |
           mkdir -p qmk_firmware/modules
-          git clone --depth 1 \
+
+          git clone \
+            --depth 1 \
             https://github.com/srwi/qmk-modules.git \
             qmk_firmware/modules/srwi
 
-      - name: Enable KeyPeek
+      # ------------------------------------------------------------
+      # 5. 현재 Vial-QMK와 KeyPeek 간 호환성 패치
+      #
+      # KeyPeek은 raw_hid_receive_user()를 호출하지만
+      # 현재 Vial-QMK에는 해당 함수가 존재하지 않는다.
+      #
+      # Vial이 사용하는 "unhandled command = 0xFF" 동작으로
+      # 대체한다.
+      # ------------------------------------------------------------
+      - name: Patch KeyPeek for Vial-QMK
+        run: |
+          sed -i \
+            's/raw_hid_receive_user(data, length);/data[0] = 0xFF;/' \
+            qmk_firmware/modules/srwi/keypeek_layer_notify/keypeek_layer_notify.c
+
+          echo "Patched KeyPeek:"
+          grep -n -A 8 -B 3 \
+            "raw_hid_receive_kb" \
+            qmk_firmware/modules/srwi/keypeek_layer_notify/keypeek_layer_notify.c
+
+      # ------------------------------------------------------------
+      # 6. Cheapino Vial keymap에서 KeyPeek Community Module 활성화
+      # ------------------------------------------------------------
+      - name: Enable KeyPeek module
         run: |
           cat > qmk_firmware/keyboards/cheapino/keymaps/vial/keymap.json <<'EOF'
           {
@@ -45,19 +81,45 @@ jobs:
           }
           EOF
 
-          echo "RAW_ENABLE = yes" >> \
-            qmk_firmware/keyboards/cheapino/keymaps/vial/rules.mk
+          echo "keymap.json:"
+          cat qmk_firmware/keyboards/cheapino/keymaps/vial/keymap.json
 
+      # ------------------------------------------------------------
+      # 7. RAW HID 활성화
+      # ------------------------------------------------------------
+      - name: Enable RAW HID
+        run: |
+          RULES="qmk_firmware/keyboards/cheapino/keymaps/vial/rules.mk"
+
+          if ! grep -q '^RAW_ENABLE *= *yes' "$RULES"; then
+            echo 'RAW_ENABLE = yes' >> "$RULES"
+          fi
+
+          echo "rules.mk:"
+          cat "$RULES"
+
+      # ------------------------------------------------------------
+      # 8. Cheapino V2 + Vial + KeyPeek 빌드
+      # ------------------------------------------------------------
       - name: Build firmware
         working-directory: qmk_firmware
         run: |
           make cheapino:vial
 
+      # ------------------------------------------------------------
+      # 9. 생성된 펌웨어 확인
+      # ------------------------------------------------------------
       - name: Show generated firmware
         working-directory: qmk_firmware
         run: |
-          find . -maxdepth 1 -type f \( -name "*.uf2" -o -name "*.bin" -o -name "*.hex" \) -print
+          echo "Generated firmware files:"
+          find . -maxdepth 1 -type f \
+            \( -name "*.uf2" -o -name "*.bin" -o -name "*.hex" \) \
+            -print
 
+      # ------------------------------------------------------------
+      # 10. UF2를 GitHub Actions Artifact로 업로드
+      # ------------------------------------------------------------
       - name: Upload UF2
         uses: actions/upload-artifact@v6
         with:
